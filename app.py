@@ -327,14 +327,35 @@ def extract_links(hub_url: str) -> list[tuple[str, str]]:
         pixel_url = unescape(pixel.group(0))
         add_result(results, "Server 10Gbps (pixel)", pixel_url)
 
-    # Pixeldrain
-    pd = re.search(
-        r'https://pixeldrain\.dev/u/[A-Za-z0-9]+',
+    # Pixeldrain — page often has a stale HTML link + the real ID in JS (var pxl = "...")
+    # Prefer the JS variable; fall back to all unique IDs found.
+    pd_ids: list[str] = []
+
+    # 1) JS variable (most reliable)
+    js_pd = re.search(
+        r'var\s+pxl\s*=\s*["\']https?://[^"\']*pixeldrain[^"\']*/(?:u|api/file)/([A-Za-z0-9_-]+)',
         html2,
         re.I,
     )
-    if pd:
-        add_result(results, "Pixeldrain", pd.group(0))
+    if js_pd:
+        pd_ids.append(js_pd.group(1))
+
+    # 2) All other pixeldrain links on the page
+    for m in re.finditer(
+        r'https?://(?:www\.)?(?:pixeldrain\.(?:com|dev|net|nl|biz|tech)|pixeldra\.in)'
+        r'/(?:u|api/file)/([A-Za-z0-9_-]+)',
+        html2,
+        re.I,
+    ):
+        if m.group(1) not in pd_ids:
+            pd_ids.append(m.group(1))
+
+    for i, pd_id in enumerate(pd_ids):
+        label = "Pixeldrain" if i == 0 else f"Pixeldrain ({i + 1})"
+        pd_page = f"https://pixeldrain.com/u/{pd_id}"
+        pd_direct = f"https://pixeldrain.com/api/file/{pd_id}?download"
+        add_result(results, label, pd_page)
+        add_result(results, f"{label} Direct Download", pd_direct)
 
     # Watch Online (already present)
     watch = re.search(
