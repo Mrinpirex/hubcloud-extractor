@@ -29,6 +29,7 @@ HTML_TEMPLATE = """
       --card: #1a1d27;
       --accent: #4fc3f7;
       --accent2: #81c784;
+      --accent3: #ffb74d;
       --text: #e8eaed;
       --muted: #9aa0a6;
       --border: #2d3139;
@@ -41,7 +42,7 @@ HTML_TEMPLATE = """
       min-height: 100vh;
       padding: 2rem 1rem;
     }
-    .container { max-width: 720px; margin: 0 auto; }
+    .container { max-width: 780px; margin: 0 auto; }
     h1 {
       font-size: 1.75rem;
       margin-bottom: 0.25rem;
@@ -70,7 +71,7 @@ HTML_TEMPLATE = """
       transition: border-color 0.2s;
     }
     input[type="url"]:focus { border-color: var(--accent); }
-    button {
+    button[type="submit"] {
       margin-top: 1rem;
       width: 100%;
       padding: 0.85rem;
@@ -83,8 +84,7 @@ HTML_TEMPLATE = """
       cursor: pointer;
       transition: opacity 0.2s;
     }
-    button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button[type="submit"]:hover { opacity: 0.9; }
     .error {
       background: #3b1a1a;
       border: 1px solid #e57373;
@@ -104,17 +104,46 @@ HTML_TEMPLATE = """
     .result-card h3 {
       font-size: 0.85rem;
       color: var(--accent);
-      margin-bottom: 0.4rem;
+      margin-bottom: 0.6rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .result-card a {
+    .link-row {
+      margin-bottom: 0.55rem;
+    }
+    .link-row:last-child { margin-bottom: 0; }
+    .link-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.15rem;
+    }
+    .link-row a {
       color: var(--text);
       word-break: break-all;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       text-decoration: none;
     }
-    .result-card a:hover { color: var(--accent); text-decoration: underline; }
+    .link-row a:hover { color: var(--accent); text-decoration: underline; }
+    .link-row.redirect a { color: var(--accent3); }
+    .link-row.redirect a:hover { color: #ffd54f; }
+    .row-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .mini-btn {
+      padding: 0.25rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--muted);
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .mini-btn:hover { border-color: var(--accent); color: var(--accent); }
     .copy-bar {
       display: flex;
       gap: 0.75rem;
@@ -133,10 +162,28 @@ HTML_TEMPLATE = """
     }
     .copy-all { background: var(--accent); color: #0f1117; }
     .copy-labeled { background: var(--accent2); color: #0f1117; }
+    .copy-redirects { background: var(--accent3); color: #0f1117; }
     footer {
       margin-top: 3rem;
       text-align: center;
       color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .help {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .help code {
+      background: var(--bg);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      color: var(--accent3);
       font-size: 0.8rem;
     }
   </style>
@@ -144,7 +191,7 @@ HTML_TEMPLATE = """
 <body>
   <div class="container">
     <h1>HubCloud Link Extractor</h1>
-    <p class="subtitle">Paste a HubCloud drive link to extract direct download &amp; player URLs.</p>
+    <p class="subtitle">Paste a HubCloud drive link → get direct links + ready-to-share redirect URLs.</p>
 
     <form method="POST" action="/" id="extract-form">
       <label for="hub_url">HubCloud URL</label>
@@ -164,24 +211,63 @@ HTML_TEMPLATE = """
     {% endif %}
 
     {% if results %}
-    <div class="copy-bar">
-      <button class="copy-btn copy-all" onclick="copyLinks(false)">Copy All Links</button>
-      <button class="copy-btn copy-labeled" onclick="copyLinks(true)">Copy with Labels</button>
+    <div class="help">
+      <strong style="color:var(--text)">Redirect links</strong> (orange) go through this app:
+      <code>/url?url=...&amp;type=...</code> → 302 to the real file.
+      Share those so downloaders always hit a fresh extract.
     </div>
+
+    <div class="copy-bar">
+      <button class="copy-btn copy-all" onclick="copyLinks('direct')">Copy Direct Links</button>
+      <button class="copy-btn copy-labeled" onclick="copyLinks('labeled')">Copy with Labels</button>
+      <button class="copy-btn copy-redirects" onclick="copyLinks('redirect')">Copy Redirect Links</button>
+    </div>
+
     <div class="results">
-      {% for name, link in results %}
+      {% for item in results %}
       <div class="result-card">
-        <h3>{{ name }}</h3>
-        <a href="{{ link }}" target="_blank" rel="noopener">{{ link }}</a>
+        <h3>{{ item.name }}</h3>
+
+        <div class="link-row">
+          <div class="link-label">Direct</div>
+          <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a>
+          <div class="row-actions">
+            <button class="mini-btn" onclick="copyText('{{ item.url }}')">Copy</button>
+            <a class="mini-btn" href="{{ item.url }}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>
+          </div>
+        </div>
+
+        <div class="link-row redirect">
+          <div class="link-label">Redirect (share this)</div>
+          <a href="{{ item.redirect }}" target="_blank" rel="noopener">{{ item.redirect }}</a>
+          <div class="row-actions">
+            <button class="mini-btn" onclick="copyText('{{ item.redirect }}')">Copy</button>
+            <a class="mini-btn" href="{{ item.redirect }}" target="_blank" rel="noopener" style="text-decoration:none">Open → Download</a>
+          </div>
+        </div>
       </div>
       {% endfor %}
     </div>
+
     <script>
       const results = {{ results | tojson }};
-      function copyLinks(labeled) {
-        const text = labeled
-          ? results.map(([n, u]) => n + ": " + u).join("\\n")
-          : results.map(([, u]) => u).join("\\n");
+      function copyText(t) {
+        navigator.clipboard.writeText(t).then(() => {
+          const btn = event.target;
+          const orig = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(() => btn.textContent = orig, 1200);
+        });
+      }
+      function copyLinks(mode) {
+        let text;
+        if (mode === "redirect") {
+          text = results.map(r => r.redirect).join("\\n");
+        } else if (mode === "labeled") {
+          text = results.map(r => r.name + ": " + r.url + "\\n  redirect: " + r.redirect).join("\\n");
+        } else {
+          text = results.map(r => r.url).join("\\n");
+        }
         navigator.clipboard.writeText(text).then(() => {
           const btn = event.target;
           const orig = btn.textContent;
@@ -386,6 +472,41 @@ def extract_links(hub_url: str) -> list[tuple[str, str]]:
     return results
 
 
+def _name_to_type(name: str) -> str:
+    """Map a result display name to the best /url?type= alias."""
+    n = name.lower()
+    if "fsl" in n or "(r2)" in n:
+        return "fsl"
+    if "gpdl" in n:
+        return "gpdl"
+    if "pixeldrain" in n and "direct" in n:
+        return "pd"
+    if "pixeldrain" in n:
+        return "pixeldrain"
+    if "10gbps (pixel)" in n or n == "server 10gbps (pixel)":
+        return "pixel"
+    if "googleusercontent" in n or n.startswith("direct google"):
+        return "direct"
+    if "hbplay" in n:
+        return "hbplay"
+    if "watch" in n:
+        return "watch"
+    return re.sub(r"[^a-z0-9]+", "_", n).strip("_")
+
+
+def _build_ui_results(hub_url: str, results: list[tuple[str, str]]) -> list[dict]:
+    """Enrich results with redirect links pointing at this app's /url endpoint."""
+    base = request.host_url.rstrip("/")
+    from urllib.parse import quote
+
+    items = []
+    for name, url in results:
+        t = _name_to_type(name)
+        redirect_url = f"{base}/url?url={quote(hub_url, safe='')}&type={quote(t, safe='')}"
+        items.append({"name": name, "url": url, "redirect": redirect_url, "type": t})
+    return items
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     hub_url = ""
@@ -398,7 +519,8 @@ def index():
             error = "Please enter a HubCloud URL."
         else:
             try:
-                results = extract_links(hub_url)
+                raw = extract_links(hub_url)
+                results = _build_ui_results(hub_url, raw)
             except requests.RequestException as e:
                 error = f"Network error: {e}"
             except ValueError as e:
