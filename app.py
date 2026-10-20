@@ -3,14 +3,10 @@ import re
 import base64
 import os
 from html import unescape
-from urllib.parse import (
-    urljoin, urlparse, parse_qs, urlencode, quote
-)
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode, quote
 
 import requests
-from flask import (
-    Flask, request, render_template_string, jsonify, redirect
-)
+from flask import Flask, request, render_template_string, jsonify, redirect
 
 app = Flask(__name__)
 
@@ -22,7 +18,6 @@ HEADERS = {
     )
 }
 
-# Each button copies redirects for this type.
 REDIRECT_TYPES = {
     "fsl": "FSL",
     "gpdl": "GPDL",
@@ -43,43 +38,73 @@ HTML = r"""
 <title>Multi URL Link Extractor</title>
 <style>
 :root {
-  --bg:#0f1117; --card:#1a1d27; --accent:#4fc3f7;
-  --green:#81c784; --orange:#ffb74d;
-  --text:#e8eaed; --muted:#9aa0a6; --border:#303541;
+    --bg:#0f1117;
+    --card:#1a1d27;
+    --accent:#4fc3f7;
+    --green:#81c784;
+    --orange:#ffb74d;
+    --text:#e8eaed;
+    --muted:#9aa0a6;
+    --border:#303541;
 }
 * {box-sizing:border-box}
 body {
-  margin:0;padding:24px 14px;background:var(--bg);
-  color:var(--text);font-family:system-ui,Arial,sans-serif
+    margin:0;
+    padding:24px 14px;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,Arial,sans-serif;
 }
 .container {max-width:950px;margin:auto}
 h1 {color:var(--accent);font-size:1.7rem}
 .subtitle {color:var(--muted);line-height:1.5}
 .panel,.result {
-  background:var(--card);border:1px solid var(--border);
-  border-radius:12px;padding:16px;margin:16px 0
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:16px;
+    margin:16px 0;
 }
 label {display:block;font-weight:600;margin-bottom:8px}
 textarea {
-  width:100%;min-height:150px;resize:vertical;
-  background:var(--bg);color:var(--text);
-  border:1px solid var(--border);border-radius:8px;
-  padding:12px;font:inherit
+    width:100%;
+    min-height:150px;
+    resize:vertical;
+    background:var(--bg);
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px;
+    font:inherit;
 }
 button {
-  border:0;border-radius:7px;padding:10px 12px;
-  font-weight:600;cursor:pointer
+    border:0;
+    border-radius:7px;
+    padding:11px 12px;
+    font-weight:600;
+    cursor:pointer;
 }
 button:disabled {opacity:.6;cursor:wait}
 .submit {
-  width:100%;margin-top:12px;background:var(--accent);
-  color:#111;padding:13px;font-size:1rem
+    width:100%;
+    margin-top:12px;
+    background:var(--accent);
+    color:#111;
+    padding:13px;
+    font-size:1rem;
 }
 .copy-grid {
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));
-  gap:9px;margin:15px 0
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+    margin:15px 0;
 }
-.copy-grid button {min-height:43px;background:var(--green);color:#111}
+.copy-grid button {
+    width:100%;
+    min-height:43px;
+    background:var(--green);
+    color:#111;
+}
 .copy-grid .all {background:var(--accent)}
 .copy-grid .redirects {background:var(--orange)}
 .result h3 {color:var(--accent);overflow-wrap:anywhere}
@@ -92,8 +117,12 @@ a:hover {text-decoration:underline}
 .mini {background:var(--bg);color:var(--text);border:1px solid var(--border)}
 hr {border:0;border-top:1px solid var(--border);margin:15px 0}
 .error {
-  color:#ff9d9d;background:#321c20;padding:12px;
-  border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere
+    color:#ff9d9d;
+    background:#321c20;
+    padding:12px;
+    border-radius:8px;
+    white-space:pre-wrap;
+    overflow-wrap:anywhere;
 }
 #status {color:var(--green);min-height:20px}
 footer {color:var(--muted);text-align:center;margin:28px 0;font-size:.8rem}
@@ -123,9 +152,8 @@ required>{{ hub_urls or '' }}</textarea>
 <div class="panel">
 <h3>Copy Specific Redirect Types</h3>
 <p class="subtitle">
-Each button copies that type's redirect URL for every submitted source.
-URLs are kept in input order. If a source does not offer that type,
-its redirect will return an unavailable-link error.
+Each button copies that redirect type for all submitted source URLs.
+Every copied URL is separated by a real newline.
 </p>
 
 <div class="copy-grid">
@@ -135,10 +163,13 @@ onclick="copyType('{{ key }}', this)">
 Copy {{ label }} Redirects
 </button>
 {% endfor %}
+
 <button type="button" class="all"
 onclick="copyAllDirect(this)">Copy All Direct Links</button>
+
 <button type="button" class="all"
 onclick="copyAllLabeled(this)">Copy All Links + Labels</button>
+
 <button type="button" class="redirects"
 onclick="copyAllRedirects(this)">Copy All Redirect Types</button>
 </div>
@@ -184,6 +215,12 @@ target="_blank" rel="noopener noreferrer">
 {{ source.redirects[key] }}
 </a>
 </div>
+<div class="actions">
+<button class="mini" type="button"
+onclick='copyText({{ source.redirects[key]|tojson }}, this)'>
+Copy {{ label }}
+</button>
+</div>
 {% endfor %}
 </div>
 {% endfor %}
@@ -193,84 +230,102 @@ const sources = {{ sources|tojson }};
 const redirectTypes = {{ redirect_types|tojson }};
 
 function setStatus(message) {
-  document.getElementById("status").textContent = message;
+    document.getElementById("status").textContent = message;
 }
 
 async function copyText(text, button) {
-  try {
-    await navigator.clipboard.writeText(text);
-    if (button) {
-      const original = button.textContent;
-      button.textContent = "Copied!";
-      setTimeout(() => button.textContent = original, 1200);
-    }
-    setStatus("Copied to clipboard.");
-  } catch (e) {
-    window.prompt("Copy this text:", text);
-  }
-}
+    try {
+        await navigator.clipboard.writeText(text);
 
-function linksForType(type) {
-  return sources.map(source => source.redirects[type]).filter(Boolean);
+        if (button) {
+            const original = button.textContent;
+            button.textContent = "Copied!";
+            setTimeout(() => {
+                button.textContent = original;
+            }, 1200);
+        }
+
+        setStatus("Copied successfully.");
+    } catch (error) {
+        window.prompt("Copy the text below:", text);
+    }
 }
 
 async function copyType(type, button) {
-  const links = linksForType(type);
-  if (!links.length) {
-    setStatus("No URLs available to copy.");
-    return;
-  }
-  await copyText(links.join("\\n"), button);
-  setStatus("Copied " + (redirectTypes[type] || type) +
-            " redirects: " + links.length);
+    const links = sources
+        .map(source => source.redirects[type])
+        .filter(Boolean);
+
+    if (!links.length) {
+        setStatus("No URLs available.");
+        return;
+    }
+
+    // Actual newline separator, not the literal characters backslash+n.
+    await copyText(links.join("\n"), button);
+
+    setStatus(
+        "Copied " + (redirectTypes[type] || type) +
+        " redirects: " + links.length
+    );
 }
 
 async function copyAllRedirects(button) {
-  const lines = [];
-  sources.forEach(source => {
-    Object.entries(source.redirects).forEach(([type, url]) => {
-      lines.push(type.toUpperCase() + ": " + url);
+    const lines = [];
+
+    sources.forEach(source => {
+        Object.entries(source.redirects).forEach(([type, url]) => {
+            lines.push(type.toUpperCase() + ": " + url);
+        });
     });
-  });
-  await copyText(lines.join("\\n"), button);
-  setStatus("Copied all redirect types.");
+
+    await copyText(lines.join("\n"), button);
+    setStatus("Copied all redirect types.");
 }
 
 async function copyAllLabeled(button) {
-  const lines = [];
-  sources.forEach(source => {
-    lines.push("SOURCE: " + source.url);
-    (source.links || []).forEach(link => {
-      lines.push(link.name + ": " + link.url);
+    const lines = [];
+
+    sources.forEach(source => {
+        lines.push("SOURCE: " + source.url);
+
+        (source.links || []).forEach(link => {
+            lines.push(link.name + ": " + link.url);
+        });
+
+        Object.entries(source.redirects).forEach(([type, url]) => {
+            lines.push(type.toUpperCase() + " REDIRECT: " + url);
+        });
+
+        lines.push("");
     });
-    Object.entries(source.redirects).forEach(([type, url]) => {
-      lines.push(type.toUpperCase() + " REDIRECT: " + url);
-    });
-    lines.push("");
-  });
-  await copyText(lines.join("\\n"), button);
-  setStatus("Copied all links with labels.");
+
+    await copyText(lines.join("\n"), button);
+    setStatus("Copied all links with labels.");
 }
 
 async function copyAllDirect(button) {
-  const lines = [];
-  sources.forEach(source => {
-    (source.links || []).forEach(link => {
-      lines.push(link.url);
+    const lines = [];
+
+    sources.forEach(source => {
+        (source.links || []).forEach(link => {
+            lines.push(link.url);
+        });
     });
-  });
-  if (!lines.length) {
-    setStatus("No direct links were extracted.");
-    return;
-  }
-  await copyText(lines.join("\\n"), button);
-  setStatus("Copied extracted direct links.");
+
+    if (!lines.length) {
+        setStatus("No direct links available.");
+        return;
+    }
+
+    await copyText(lines.join("\n"), button);
+    setStatus("Copied extracted direct links.");
 }
 
 document.getElementById("extract-form").addEventListener("submit", () => {
-  const button = document.getElementById("submit-btn");
-  button.disabled = true;
-  button.textContent = "Extracting...";
+    const button = document.getElementById("submit-btn");
+    button.disabled = true;
+    button.textContent = "Extracting...";
 });
 </script>
 {% endif %}
@@ -299,11 +354,15 @@ def direct_googleusercontent_url(url):
         url,
         re.I,
     )
+
     return match.group(0).rstrip(").,") if match else None
 
 
-def make_hbplay_link(video_url, filename="video.mp4",
-                     mime_type="video/mp4"):
+def make_hbplay_link(
+    video_url,
+    filename="video.mp4",
+    mime_type="video/mp4",
+):
     return "https://hbplay.pages.dev/?" + urlencode({
         "u": base64.b64encode(video_url.encode()).decode(),
         "m": base64.b64encode(mime_type.encode()).decode(),
@@ -328,15 +387,18 @@ def extract_links(hub_url):
 
     match = re.search(
         r'<[^>]*\bid=["\']download["\'][^>]*\bhref=["\']([^"\']+)["\']',
-        html1, re.I
+        html1,
+        re.I,
     )
+
     if match:
         generate_url = urljoin(response.url, unescape(match.group(1)))
 
     if not generate_url:
         match = re.search(
             r'https?://gamerxyt\.com/hubcloud\.php\?[^"\'\s<>]+',
-            html1, re.I
+            html1,
+            re.I,
         )
         if match:
             generate_url = unescape(match.group(0))
@@ -344,7 +406,8 @@ def extract_links(hub_url):
     if not generate_url:
         match = re.search(
             r'hubcloud\.php\?host=hubcloud[^"\'\s<>]+',
-            html1, re.I
+            html1,
+            re.I,
         )
         if match:
             generate_url = urljoin(response.url, unescape(match.group(0)))
@@ -364,34 +427,44 @@ def extract_links(hub_url):
     results = []
     pixel_url = None
 
+    # FSL / R2
     fsl = re.search(
         r'https://[^"\'\s<>]+r2\.cloudflarestorage\.com[^"\'\s<>]*',
-        html2, re.I
+        html2,
+        re.I,
     )
     if fsl:
         add_result(results, "FSL Server (R2)", unescape(fsl.group(0)))
 
+    # GPDL
     gpdl = re.search(
         r'https://gpdl\.hubcloud\.ist/\?id=[^"\'\s<>]+',
-        html2, re.I
+        html2,
+        re.I,
     )
     if gpdl:
-        add_result(results, "GPDL", unescape(gpdl.group(0)))
+        add_result(results, "Server 10Gbps (GPDL)", unescape(gpdl.group(0)))
 
+    # Pixel server
     pixel = re.search(
         r'https://pixel\.hubcloud\.ist/\?id=[^"\'\s<>]+',
-        html2, re.I
+        html2,
+        re.I,
     )
     if pixel:
         pixel_url = unescape(pixel.group(0))
-        add_result(results, "Pixel Server", pixel_url)
+        add_result(results, "Server 10Gbps (Pixel)", pixel_url)
 
+    # Pixeldrain IDs
     pd_ids = []
+
     js_pd = re.search(
         r'var\s+pxl\s*=\s*["\']https?://[^"\']*pixeldrain[^"\']*/'
         r'(?:u|api/file)/([A-Za-z0-9_-]+)',
-        html2, re.I
+        html2,
+        re.I,
     )
+
     if js_pd:
         pd_ids.append(js_pd.group(1))
 
@@ -399,26 +472,38 @@ def extract_links(hub_url):
         r'https?://(?:www\.)?'
         r'(?:pixeldrain\.(?:com|dev|net|nl|biz|tech)|pixeldra\.in)'
         r'/(?:u|api/file)/([A-Za-z0-9_-]+)',
-        html2, re.I
+        html2,
+        re.I,
     ):
-        if match.group(1) not in pd_ids:
-            pd_ids.append(match.group(1))
+        pd_id = match.group(1)
+        if pd_id not in pd_ids:
+            pd_ids.append(pd_id)
 
     for index, pd_id in enumerate(pd_ids):
         label = "Pixeldrain" if index == 0 else f"Pixeldrain ({index + 1})"
-        add_result(results, label, f"https://pixeldrain.com/u/{pd_id}")
+
         add_result(
-            results, label + " Direct Download",
-            f"https://pixeldrain.com/api/file/{pd_id}?download"
+            results,
+            label,
+            f"https://pixeldrain.com/u/{pd_id}",
         )
 
+        add_result(
+            results,
+            label + " Direct Download",
+            f"https://pixeldrain.com/api/file/{pd_id}?download",
+        )
+
+    # Watch link
     watch = re.search(
         r'https://hbplay\.pages\.dev/\?u=[^"\'\s<>]+',
-        html2, re.I
+        html2,
+        re.I,
     )
     if watch:
         add_result(results, "Watch Online", unescape(watch.group(0)))
 
+    # Follow Pixel server to Googleusercontent
     if pixel_url:
         pixel_response = session.get(
             pixel_url,
@@ -426,11 +511,21 @@ def extract_links(hub_url):
             timeout=30,
             allow_redirects=True,
         )
+
         direct_url = direct_googleusercontent_url(pixel_response.url)
 
         if direct_url:
-            add_result(results, "Direct Googleusercontent Download", direct_url)
-            add_result(results, "HBPlay Player Link", make_hbplay_link(direct_url))
+            add_result(
+                results,
+                "Direct Googleusercontent Download",
+                direct_url,
+            )
+
+            add_result(
+                results,
+                "HBPlay Player Link",
+                make_hbplay_link(direct_url),
+            )
 
     if not results:
         raise ValueError("No download links found on the generate page.")
@@ -441,8 +536,8 @@ def extract_links(hub_url):
 TYPE_ALIASES = {
     "fsl": ("FSL Server (R2)",),
     "r2": ("FSL Server (R2)",),
-    "gpdl": ("GPDL",),
-    "pixel": ("Pixel Server",),
+    "gpdl": ("Server 10Gbps (GPDL)",),
+    "pixel": ("Server 10Gbps (Pixel)",),
     "pixeldrain": ("Pixeldrain",),
     "pd": ("Pixeldrain Direct Download",),
     "pixeldrain_direct": ("Pixeldrain Direct Download",),
@@ -463,16 +558,18 @@ def pick_result(results, type_param=None):
             "Direct Googleusercontent Download",
             "FSL Server (R2)",
             "Pixeldrain Direct Download",
-            "GPDL",
-            "Pixel Server",
+            "Server 10Gbps (GPDL)",
+            "Server 10Gbps (Pixel)",
             "Pixeldrain",
             "HBPlay Player Link",
             "Watch Online",
         )
+
         for target in preferred:
             for name, url in results:
                 if name == target:
                     return url
+
         return results[0][1]
 
     key = type_param.strip().lower()
@@ -494,8 +591,12 @@ def pick_result(results, type_param=None):
 def build_redirects(source_url):
     base = request.host_url.rstrip("/")
     encoded_source = quote(source_url, safe="")
+
     return {
-        key: f"{base}/url?url={encoded_source}&type={quote(key)}"
+        key: (
+            f"{base}/url?url={encoded_source}"
+            f"&type={quote(key, safe='')}"
+        )
         for key in REDIRECT_TYPES
     }
 
@@ -504,21 +605,26 @@ def build_redirects(source_url):
 def index():
     hub_urls = ""
     sources = None
-    errors = []
+    error = None
 
     if request.method == "POST":
         hub_urls = (request.form.get("hub_urls") or "").strip()
+
         urls = list(dict.fromkeys(
-            line.strip() for line in hub_urls.splitlines() if line.strip()
+            line.strip()
+            for line in hub_urls.splitlines()
+            if line.strip()
         ))
 
         if not urls:
-            errors.append("Enter at least one HubCloud URL.")
+            error = "Enter at least one HubCloud URL."
         else:
             sources = []
+            errors = []
 
             for source_url in urls:
                 parsed = urlparse(source_url)
+
                 source = {
                     "url": source_url,
                     "links": [],
@@ -526,8 +632,12 @@ def index():
                     "error": None,
                 }
 
-                if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                if (
+                    parsed.scheme not in ("http", "https")
+                    or not parsed.netloc
+                ):
                     source["error"] = "Invalid HTTP/HTTPS URL."
+                    errors.append(source_url + " — Invalid URL.")
                 else:
                     try:
                         extracted = extract_links(source_url)
@@ -537,14 +647,18 @@ def index():
                         ]
                     except Exception as exc:
                         source["error"] = str(exc)
+                        errors.append(f"{source_url} — {exc}")
 
                 sources.append(source)
+
+            if errors:
+                error = "Some URLs could not be processed:\n" + "\n".join(errors)
 
     return render_template_string(
         HTML,
         hub_urls=hub_urls,
         sources=sources,
-        error="\n".join(errors) if errors else None,
+        error=error,
         redirect_types=REDIRECT_TYPES,
     )
 
@@ -552,26 +666,44 @@ def index():
 @app.route("/api", methods=["POST"])
 def api():
     data = request.get_json(silent=True) or {}
+
     raw_urls = data.get("hub_urls") or data.get("hub_url") or ""
+
     if isinstance(raw_urls, list):
-        urls = [str(url).strip() for url in raw_urls if str(url).strip()]
+        urls = [
+            str(url).strip()
+            for url in raw_urls
+            if str(url).strip()
+        ]
     else:
-        urls = [line.strip() for line in str(raw_urls).splitlines() if line.strip()]
+        urls = [
+            line.strip()
+            for line in str(raw_urls).splitlines()
+            if line.strip()
+        ]
 
     if not urls:
         return jsonify({"error": "hub_urls is required"}), 400
 
     output = []
+
     for source_url in urls:
         try:
             links = extract_links(source_url)
+
             output.append({
                 "source": source_url,
-                "links": [{"name": n, "url": u} for n, u in links],
+                "links": [
+                    {"name": name, "url": url}
+                    for name, url in links
+                ],
                 "redirects": build_redirects(source_url),
             })
         except Exception as exc:
-            output.append({"source": source_url, "error": str(exc)})
+            output.append({
+                "source": source_url,
+                "error": str(exc),
+            })
 
     return jsonify({"results": output})
 
@@ -579,8 +711,11 @@ def api():
 @app.route("/url", methods=["GET"])
 def url_redirect():
     hub_url = (request.args.get("url") or "").strip()
+
     type_param = (
-        request.args.get("type") or request.args.get("server") or ""
+        request.args.get("type")
+        or request.args.get("server")
+        or ""
     ).strip()
 
     if not hub_url:
@@ -590,23 +725,31 @@ def url_redirect():
         }), 400
 
     parsed = urlparse(hub_url)
+
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return jsonify({"error": "Invalid HTTP/HTTPS URL"}), 400
 
     try:
         results = extract_links(hub_url)
+
     except requests.RequestException as exc:
         return jsonify({"error": f"Network error: {exc}"}), 502
+
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 404
+
     except Exception as exc:
         return jsonify({"error": f"Extraction error: {exc}"}), 500
 
     target = pick_result(results, type_param or None)
+
     if not target:
         return jsonify({
             "error": f"No matching link for type={type_param!r}",
-            "available": [{"name": n, "url": u} for n, u in results],
+            "available": [
+                {"name": name, "url": url}
+                for name, url in results
+            ],
             "types": list(REDIRECT_TYPES),
         }), 404
 
