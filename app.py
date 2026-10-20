@@ -4,7 +4,7 @@ from html import unescape
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
 import requests
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, render_template_string, jsonify, redirect, abort
 
 app = Flask(__name__)
 
@@ -437,6 +437,126 @@ def api():
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": f"Unexpected error: {e}"}), 500
+
+
+# Map short type aliases → result name substrings (case-insensitive match)
+TYPE_ALIASES = {
+    "fsl": "FSL Server (R2)",
+    "r2": "FSL Server (R2)",
+    "gpdl": "Server 10Gbps (gpdl)",
+    "pixel": "Server 10Gbps (pixel)",
+    "pixeldrain": "Pixeldrain",
+    "pd": "Pixeldrain Direct Download",
+    "pixeldrain_direct": "Pixeldrain Direct Download",
+    "direct": "Direct Googleusercontent Download",
+    "google": "Direct Googleusercontent Download",
+    "googleusercontent": "Direct Googleusercontent Download",
+    "hbplay": "HBPlay Player Link",
+    "watch": "Watch Online",
+    "player": "HBPlay Player Link",
+}
+
+
+def _pick_result(results: list[tuple[str, str]], type_param: str | None) -> str | None:
+    """
+    Pick a download URL from results based on type_param.
+    type_param can be a short alias or a full/partial result name.
+    Preference order when type is omitted: direct → fsl → pixeldrain direct → first.
+    """
+    if not results:
+        return None
+
+    # Default preference when no type given
+    if not type_param:
+        for preferred in (
+            "Direct Googleusercontent Download",
+            "FSL Server (R2)",
+            "Pixeldrain Direct Download",
+            "Server 10Gbps (gpdl)",
+            "Server 10Gbps (pixel)",
+            "Pixeldrain",
+            "HBPlay Player Link",
+            "Watch Online",
+        ):
+            for name, url in results:
+                if name == preferred:
+                    return url
+        return results[0][1]
+
+    key = type_param.strip().lower()
+
+    # Exact alias
+    if key in TYPE_ALIASES:
+        target = TYPE_ALIASES[key]
+        for name, url in results:
+            if name == target or name.startswith(target):
+                return url
+        # fallback: partial match on alias target
+        for name, url in results:
+            if target.lower() in name.lower():
+                return url
+
+    # Partial match against result names
+    for name, url in results:
+        if key in name.lower() or key in url.lower():
+            return url
+
+    return None
+
+
+@app.route("/url", methods=["GET"])
+def url_redirect():
+    """
+    Extract links and 302-redirect to the chosen server.
+
+    Examples:
+      /url?url=https://hubcloud.ist/drive/xxx
+      /url?url=https://hubcloud.ist/drive/xxx&type=fsl
+      /url?url=https://hubcloud.ist/drive/xxx&type=direct
+      /url?url=https://hubcloud.ist/drive/xxx&type=pd
+      /url?url=https://hubcloud.ist/drive/xxx&type=pixeldrain_direct
+
+    Query params:
+      url   (required)  HubCloud drive URL
+      type  (optional)  fsl | r2 | gpdl | pixel | pixeldrain | pd |
+                        pixeldrain_direct | direct | google | hbplay | watch
+                        or any substring of a result name
+    """
+    hub_url = (request.args.get("url") or "").strip()
+    type_param = (request.args.get("type") or request.args.get("server") or "").strip()
+
+    if not hub_url:
+        return (
+            jsonify({
+                "error": "Missing 'url' query parameter",
+                "usage": "/url?url=https://hubcloud.ist/drive/xxx&type=direct",
+                "types": list(TYPE_ALIASES.keys()),
+            }),
+            400,
+        )
+
+    try:
+        results = extract_links(hub_url)
+    except requests.RequestException as e:
+        return jsonify({"error": f"Network error: {e}"}), 502
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {e}"}), 500
+
+    target = _pick_result(results, type_param or None)
+
+    if not target:
+        return (
+            jsonify({
+                "error": f"No matching link for type={type_param!r}",
+                "available": [{"name": n, "url": u} for n, u in results],
+                "types": list(TYPE_ALIASES.keys()),
+            }),
+            404,
+        )
+
+    return redirect(target, code=302)
 
 
 if __name__ == "__main__":
